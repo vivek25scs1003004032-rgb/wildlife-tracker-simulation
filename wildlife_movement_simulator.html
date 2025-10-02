@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Wildlife Location Predictor</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom styles for the map simulation */
+        #tracking-canvas {
+            border: 2px solid #10b981; /* Emerald border */
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            background-color: #f7fee7; /* Light green background for habitat */
+            width: 100%;
+            height: 500px;
+        }
+        .data-card {
+            background-color: #f0fdf4; /* Lightest green */
+            border-left: 4px solid #059669; /* Darker green accent */
+        }
+        .legend-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans p-4 sm:p-8">
+
+    <div class="max-w-4xl mx-auto">
+        <header class="text-center mb-10">
+            <h1 class="text-3xl sm:text-4xl font-extrabold text-green-700">Wanderer Deer Predictive Tracker</h1>
+            <p class="mt-2 text-lg text-gray-500">Simulating real-time GPS data and AI-enhanced movement prediction.</p>
+        </header>
+
+        <!-- Tracking Canvas -->
+        <div class="mb-8">
+            <canvas id="tracking-canvas" width="800" height="500"></canvas>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-6">
+            <!-- Real-Time Data Card -->
+            <div class="p-6 rounded-xl shadow-lg data-card transition-all duration-300 hover:shadow-xl">
+                <h2 class="text-xl font-semibold text-green-800 mb-3 flex items-center">
+                    <svg class="w-6 h-6 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                    Actual GPS Location
+                </h2>
+                <div class="space-y-2 text-gray-600">
+                    <p>Current X: <span id="current-x" class="font-mono font-bold text-gray-800">0</span></p>
+                    <p>Current Y: <span id="current-y" class="font-mono font-bold text-gray-800">0</span></p>
+                    <p>Speed: <span id="speed-display" class="font-mono font-bold text-gray-800">0.0</span> units/step</p>
+                </div>
+            </div>
+
+            <!-- Prediction Data Card -->
+            <div class="p-6 rounded-xl shadow-lg data-card transition-all duration-300 hover:shadow-xl">
+                <h2 class="text-xl font-semibold text-green-800 mb-3 flex items-center">
+                    <svg class="w-6 h-6 mr-2 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
+                    AI-Predicted Next Location
+                </h2>
+                <div class="space-y-2 text-gray-600">
+                    <p>Predicted X: <span id="predicted-x" class="font-mono font-bold text-gray-800">0</span></p>
+                    <p>Predicted Y: <span id="predicted-y" class="font-mono font-bold text-gray-800">0</span></p>
+                    <p>Prediction Error: <span id="error-display" class="font-mono font-bold text-red-500">0.0</span> units</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Legend -->
+        <div class="mt-8 p-4 bg-white rounded-xl shadow">
+            <h3 class="text-lg font-semibold text-gray-700 mb-2">Map Legend</h3>
+            <div class="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+                <div class="flex items-center">
+                    <span class="legend-dot bg-green-500"></span> Actual Path (GPS Data)
+                </div>
+                <div class="flex items-center">
+                    <span class="legend-dot" style="background-color: #3b82f6;"></span> Current Location
+                </div>
+                <div class="flex items-center">
+                    <span class="legend-dot bg-red-500"></span> Predicted Next Location (AI)
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase Imports and Setup (MANDATORY BOILERPLATE) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, setDoc, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Set Firebase logging level (Debug for development)
+        setLogLevel('Debug');
+
+        // Global variables provided by the environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        
+        // Initialize Firebase
+        let app;
+        let db;
+        let auth;
+        let userId;
+
+        if (Object.keys(firebaseConfig).length > 0) {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+
+            // Authentication logic
+            const authenticate = async () => {
+                try {
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                        console.log("Signed in with custom token.");
+                    } else {
+                        await signInAnonymously(auth);
+                        console.log("Signed in anonymously.");
+                    }
+                } catch (error) {
+                    console.error("Firebase authentication error:", error);
+                }
+            };
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    userId = user.uid;
+                    console.log("User authenticated. UID:", userId);
+                    // You would typically start loading/saving data here
+                    // Since this is a simulation, we just need the userId for the path structure
+                    // Example path creation (not used for this sim): 
+                    // const userDocRef = doc(db, `artifacts/${appId}/users/${userId}/simulationData`, "deer_tracker");
+                } else {
+                    // Use a random ID if anonymous sign-in failed (shouldn't happen)
+                    userId = crypto.randomUUID();
+                    console.log("Auth state changed, using generated UUID:", userId);
+                }
+            });
+
+            authenticate();
+        } else {
+            console.log("Firebase config not available. Running simulation in standalone mode.");
+            userId = 'standalone-user-' + crypto.randomUUID();
+        }
+    </script>
+    
+    <!-- Simulation and Visualization Logic -->
+    <script>
+        const canvas = document.getElementById('tracking-canvas');
+        const ctx = canvas.getContext('2d');
+        const mapWidth = canvas.width;
+        const mapHeight = canvas.height;
+
+        // Configuration
+        const MAX_POINTS = 50; // Max points to store for prediction/display
+        const PREDICTION_WINDOW = 5; // Use the last 5 points for prediction calculation
+        const TICK_INTERVAL = 500; // Update every 0.5 seconds
+
+        // --- Animal State and History ---
+        let animal = {
+            x: mapWidth / 2,
+            y: mapHeight / 2,
+            history: [], // Stores {x, y} points
+            prediction: { x: mapWidth / 2, y: mapHeight / 2 },
+            velocity: { x: 0, y: 0 }
+        };
+
+        // --- AI Prediction Model (Simple Extrapolation) ---
+        function predictNextLocation(history) {
+            if (history.length < PREDICTION_WINDOW) {
+                return { x: animal.x, y: animal.y }; // Not enough data, predict current location
+            }
+
+            // Get the recent movement window
+            const recentHistory = history.slice(-PREDICTION_WINDOW);
+
+            let avgVx = 0;
+            let avgVy = 0;
+
+            // Calculate the average velocity vector of the last N steps
+            for (let i = 1; i < recentHistory.length; i++) {
+                const p1 = recentHistory[i - 1];
+                const p2 = recentHistory[i];
+                avgVx += (p2.x - p1.x);
+                avgVy += (p2.y - p1.y);
+            }
+
+            // Simple average
+            const numSteps = recentHistory.length - 1;
+            avgVx /= numSteps;
+            avgVy /= numSteps;
+
+            // Extrapolate the next position based on the average velocity
+            // We apply a slight factor (1.2) to simulate a bit of momentum/overshoot
+            const predictedX = animal.x + (avgVx * 1.2);
+            const predictedY = animal.y + (avgVy * 1.2);
+
+            return { x: predictedX, y: predictedY };
+        }
+
+        // --- Movement Simulation (The "True" Animal Movement) ---
+        function updateAnimalLocation() {
+            // Add a small random component to simulate natural, unpredictable movement
+            const randomWalkX = (Math.random() - 0.5) * 5; // Max 5 units change
+            const randomWalkY = (Math.random() - 0.5) * 5;
+
+            // Combine previous velocity (momentum) and random walk
+            animal.velocity.x = (animal.velocity.x * 0.8) + randomWalkX; // Damping/momentum
+            animal.velocity.y = (animal.velocity.y * 0.8) + randomWalkY;
+
+            // Limit max velocity
+            const maxV = 15;
+            animal.velocity.x = Math.max(-maxV, Math.min(maxV, animal.velocity.x));
+            animal.velocity.y = Math.max(-maxV, Math.min(maxV, animal.velocity.y));
+
+            const lastX = animal.x;
+            const lastY = animal.y;
+            
+            // Apply new position
+            animal.x += animal.velocity.x;
+            animal.y += animal.velocity.y;
+
+            // Keep the animal within the map boundaries
+            if (animal.x < 10 || animal.x > mapWidth - 10) {
+                animal.x = Math.max(10, Math.min(mapWidth - 10, animal.x));
+                animal.velocity.x *= -0.5; // Bounce effect
+            }
+            if (animal.y < 10 || animal.y > mapHeight - 10) {
+                animal.y = Math.max(10, Math.min(mapHeight - 10, animal.y));
+                animal.velocity.y *= -0.5; // Bounce effect
+            }
+            
+            // Store the actual location
+            animal.history.push({ x: animal.x, y: animal.y });
+
+            // Trim history to maintain a recent view
+            if (animal.history.length > MAX_POINTS) {
+                animal.history.shift();
+            }
+
+            // Calculate speed for display
+            const speed = Math.sqrt(Math.pow(animal.x - lastX, 2) + Math.pow(animal.y - lastY, 2)).toFixed(2);
+            document.getElementById('speed-display').textContent = speed;
+        }
+
+        // --- Visualization ---
+        function drawMap() {
+            // Clear canvas
+            ctx.clearRect(0, 0, mapWidth, mapHeight);
+
+            // Draw Actual Path (Historical GPS Data)
+            if (animal.history.length > 1) {
+                ctx.beginPath();
+                ctx.strokeStyle = '#10b981'; // Emerald Green
+                ctx.lineWidth = 2;
+                ctx.shadowBlur = 0;
+
+                ctx.moveTo(animal.history[0].x, animal.history[0].y);
+                for (let i = 1; i < animal.history.length; i++) {
+                    ctx.lineTo(animal.history[i].x, animal.history[i].y);
+                }
+                ctx.stroke();
+            }
+
+            // Draw Predicted Next Location (AI)
+            ctx.beginPath();
+            ctx.fillStyle = '#ef4444'; // Red for prediction target
+            ctx.arc(animal.prediction.x, animal.prediction.y, 8, 0, Math.PI * 2);
+            ctx.fill();
+            // Draw a crosshair for better visibility
+            ctx.strokeStyle = '#b91c1c';
+            ctx.lineWidth = 1;
+            ctx.moveTo(animal.prediction.x - 10, animal.prediction.y);
+            ctx.lineTo(animal.prediction.x + 10, animal.prediction.y);
+            ctx.moveTo(animal.prediction.x, animal.prediction.y - 10);
+            ctx.lineTo(animal.prediction.x, animal.prediction.y + 10);
+            ctx.stroke();
+            
+            // Draw Current Location (The Animal)
+            ctx.beginPath();
+            ctx.fillStyle = '#3b82f6'; // Blue for current position
+            ctx.arc(animal.x, animal.y, 6, 0, Math.PI * 2);
+            ctx.shadowColor = '#3b82f6';
+            ctx.shadowBlur = 10;
+            ctx.fill();
+        }
+        
+        // --- UI Update and Error Calculation ---
+        function updateUI() {
+            // Update GPS Data
+            document.getElementById('current-x').textContent = animal.x.toFixed(2);
+            document.getElementById('current-y').textContent = animal.y.toFixed(2);
+
+            // Update Prediction Data
+            document.getElementById('predicted-x').textContent = animal.prediction.x.toFixed(2);
+            document.getElementById('predicted-y').textContent = animal.prediction.y.toFixed(2);
+
+            // Calculate Prediction Error (Euclidean distance between current and predicted location)
+            const dx = animal.x - animal.prediction.x;
+            const dy = animal.y - animal.prediction.y;
+            const error = Math.sqrt(dx * dx + dy * dy).toFixed(2);
+            
+            // The actual error is the distance between the *predicted* location (from the previous step)
+            // and the *actual* location (in the current step).
+            // For this simple visualization, we show the distance between the current location and the next predicted location.
+            document.getElementById('error-display').textContent = error;
+            document.getElementById('error-display').className = `font-mono font-bold ${error > 50 ? 'text-red-600' : error > 20 ? 'text-yellow-600' : 'text-green-600'}`;
+        }
+
+        // --- Main Simulation Loop ---
+        function gameLoop() {
+            // 1. Move the animal (Simulate the real world)
+            updateAnimalLocation();
+            
+            // 2. Predict the next location (Simulate the AI model running on the tracker data)
+            animal.prediction = predictNextLocation(animal.history);
+
+            // 3. Draw and Display
+            drawMap();
+            updateUI();
+        }
+
+        window.onload = function () {
+            // Ensure canvas dimensions are correct
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            animal.x = canvas.width / 2;
+            animal.y = canvas.height / 2;
+            animal.prediction = { x: animal.x, y: animal.y };
+            
+            // Start the simulation
+            setInterval(gameLoop, TICK_INTERVAL);
+        }
+
+        window.addEventListener('resize', () => {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            drawMap(); // Redraw on resize
+        });
+
+    </script>
+</body>
+</html>
